@@ -20,6 +20,13 @@ const defaults = {
   castShadow: true,
   receiveShadow: true,
   doubleside: false,
+  // iframe specific
+  src: null,
+  allowFullscreen: true,
+  allowPaymentRequest: false,
+  allowSameOrigin: true,
+  allowScripts: true,
+  allowTopNavigation: false,
   // physics
   physics: null, // null | 'static' | 'kinematic' | 'dynamic'
   mass: 1,
@@ -45,7 +52,7 @@ const _m2 = new THREE.Matrix4()
 const _m3 = new THREE.Matrix4()
 const _defaultScale = new THREE.Vector3(1, 1, 1)
 
-const types = ['box', 'sphere', 'cylinder', 'cone', 'torus', 'plane']
+const types = ['box', 'sphere', 'cylinder', 'cone', 'torus', 'plane', 'iframe']
 
 const defaultSizes = {
   box: [1, 1, 1], // width, height, depth
@@ -54,6 +61,7 @@ const defaultSizes = {
   cone: [0.5, 1], // radius, height
   torus: [0.4, 0.1], // radius, tubeRadius
   plane: [1, 1], // width, height
+  iframe: [2, 1], // width, height (scale determines actual size)
 }
 
 // Geometry cache
@@ -97,6 +105,13 @@ const getGeometry = (type, size) => {
         break
       case 'plane':
         {
+          const [width, height] = size
+          geometry = new THREE.PlaneGeometry(width, height)
+        }
+        break
+      case 'iframe':
+        {
+          // Use a plane geometry for iframe - it will display HTML content via CSS3D
           const [width, height] = size
           geometry = new THREE.PlaneGeometry(width, height)
         }
@@ -175,33 +190,40 @@ export class Prim extends Node {
     super(data)
     this.name = 'prim'
 
-    this.type = data.type
-    this.size = data.size
-    this.color = data.color
-    this.emissive = data.emissive
-    this.emissiveIntensity = data.emissiveIntensity
-    this.metalness = data.metalness
-    this.roughness = data.roughness
-    this.opacity = data.opacity
-    this.texture = data.texture
-    this.castShadow = data.castShadow
-    this.receiveShadow = data.receiveShadow
-    this.doubleside = data.doubleside
+    this._type = data.type
+    this._size = data.size
+    this._color = data.color
+    this._emissive = data.emissive
+    this._emissiveIntensity = data.emissiveIntensity
+    this._metalness = data.metalness
+    this._roughness = data.roughness
+    this._opacity = data.opacity
+    this._texture = data.texture
+    this._castShadow = data.castShadow
+    this._receiveShadow = data.receiveShadow
+    this._doubleside = data.doubleside
+    // iframe specific properties
+    this._src = data.src
+    this._allowFullscreen = data.allowFullscreen
+    this._allowPaymentRequest = data.allowPaymentRequest
+    this._allowSameOrigin = data.allowSameOrigin
+    this._allowScripts = data.allowScripts
+    this._allowTopNavigation = data.allowTopNavigation
     // Physics properties
-    this.physics = data.physics
-    this.mass = data.mass
-    this.linearDamping = data.linearDamping
-    this.angularDamping = data.angularDamping
-    this.staticFriction = data.staticFriction
-    this.dynamicFriction = data.dynamicFriction
-    this.restitution = data.restitution
-    this.layer = data.layer
-    this.trigger = data.trigger
-    this.tag = data.tag
-    this.onContactStart = data.onContactStart
-    this.onContactEnd = data.onContactEnd
-    this.onTriggerEnter = data.onTriggerEnter
-    this.onTriggerLeave = data.onTriggerLeave
+    this._physics = data.physics
+    this._mass = data.mass
+    this._linearDamping = data.linearDamping
+    this._angularDamping = data.angularDamping
+    this._staticFriction = data.staticFriction
+    this._dynamicFriction = data.dynamicFriction
+    this._restitution = data.restitution
+    this._layer = data.layer
+    this._trigger = data.trigger
+    this._tag = data.tag
+    this._onContactStart = data.onContactStart
+    this._onContactEnd = data.onContactEnd
+    this._onTriggerEnter = data.onTriggerEnter
+    this._onTriggerLeave = data.onTriggerLeave
 
     // Physics state
     this.shapes = new Set()
@@ -212,6 +234,7 @@ export class Prim extends Node {
     this.matrixWorldOffset = new THREE.Matrix4()
     this.scaleOffset = new THREE.Vector3()
     this.n = 0
+    this.iframeElement = null
   }
 
   async mount() {
@@ -495,6 +518,13 @@ export class Prim extends Node {
     this._castShadow = source._castShadow
     this._receiveShadow = source._receiveShadow
     this._doubleside = source._doubleside
+    // iframe properties
+    this._src = source._src
+    this._allowFullscreen = source._allowFullscreen
+    this._allowPaymentRequest = source._allowPaymentRequest
+    this._allowSameOrigin = source._allowSameOrigin
+    this._allowScripts = source._allowScripts
+    this._allowTopNavigation = source._allowTopNavigation
     // Physics properties
     this._physics = source._physics
     this._mass = source._mass
@@ -887,6 +917,85 @@ export class Prim extends Node {
     this.setDirty()
   }
 
+  // iframe property getters/setters
+  get src() {
+    return this._src
+  }
+
+  set src(value = defaults.src) {
+    if (value !== null && !isString(value)) {
+      throw new Error('[prim] src must be string or null')
+    }
+    if (this._src === value) return
+    this._src = value
+    this.setDirty()
+  }
+
+  get allowFullscreen() {
+    return this._allowFullscreen
+  }
+
+  set allowFullscreen(value = defaults.allowFullscreen) {
+    if (!isBoolean(value)) {
+      throw new Error('[prim] allowFullscreen must be boolean')
+    }
+    if (this._allowFullscreen === value) return
+    this._allowFullscreen = value
+    this.setDirty()
+  }
+
+  get allowPaymentRequest() {
+    return this._allowPaymentRequest
+  }
+
+  set allowPaymentRequest(value = defaults.allowPaymentRequest) {
+    if (!isBoolean(value)) {
+      throw new Error('[prim] allowPaymentRequest must be boolean')
+    }
+    if (this._allowPaymentRequest === value) return
+    this._allowPaymentRequest = value
+    this.setDirty()
+  }
+
+  get allowSameOrigin() {
+    return this._allowSameOrigin
+  }
+
+  set allowSameOrigin(value = defaults.allowSameOrigin) {
+    if (!isBoolean(value)) {
+      throw new Error('[prim] allowSameOrigin must be boolean')
+    }
+    if (this._allowSameOrigin === value) return
+    this._allowSameOrigin = value
+    this.setDirty()
+  }
+
+  get allowScripts() {
+    return this._allowScripts
+  }
+
+  set allowScripts(value = defaults.allowScripts) {
+    if (!isBoolean(value)) {
+      throw new Error('[prim] allowScripts must be boolean')
+    }
+    if (this._allowScripts === value) return
+    this._allowScripts = value
+    this.setDirty()
+  }
+
+  get allowTopNavigation() {
+    return this._allowTopNavigation
+  }
+
+  set allowTopNavigation(value = defaults.allowTopNavigation) {
+    if (!isBoolean(value)) {
+      throw new Error('[prim] allowTopNavigation must be boolean')
+    }
+    if (this._allowTopNavigation === value) return
+    this._allowTopNavigation = value
+    this.setDirty()
+  }
+
   getProxy() {
     if (!this.proxy) {
       const self = this
@@ -1054,6 +1163,43 @@ export class Prim extends Node {
         set doubleside(value) {
           self.doubleside = value
         },
+        // iframe properties
+        get src() {
+          return self.src
+        },
+        set src(value) {
+          self.src = value
+        },
+        get allowFullscreen() {
+          return self.allowFullscreen
+        },
+        set allowFullscreen(value) {
+          self.allowFullscreen = value
+        },
+        get allowPaymentRequest() {
+          return self.allowPaymentRequest
+        },
+        set allowPaymentRequest(value) {
+          self.allowPaymentRequest = value
+        },
+        get allowSameOrigin() {
+          return self.allowSameOrigin
+        },
+        set allowSameOrigin(value) {
+          self.allowSameOrigin = value
+        },
+        get allowScripts() {
+          return self.allowScripts
+        },
+        set allowScripts(value) {
+          self.allowScripts = value
+        },
+        get allowTopNavigation() {
+          return self.allowTopNavigation
+        },
+        set allowTopNavigation(value) {
+          self.allowTopNavigation = value
+        },
       }
       proxy = Object.defineProperties(proxy, Object.getOwnPropertyDescriptors(super.getProxy())) // inherit Node properties
       this.proxy = proxy
@@ -1121,6 +1267,13 @@ function getGeometryConfig(type, requestedSize) {
 
     case 'plane': {
       // Always use unit plane and scale it
+      size = [1, 1]
+      scaleOffset = [...requestedSize, 1] // Scale X/Y, keep Z at 1
+      break
+    }
+
+    case 'iframe': {
+      // iframe uses plane geometry configuration
       size = [1, 1]
       scaleOffset = [...requestedSize, 1] // Scale X/Y, keep Z at 1
       break
