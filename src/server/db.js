@@ -26,13 +26,9 @@ export async function getDB({ worldDir }) {
         await db.raw(`CREATE SCHEMA IF NOT EXISTS ??`, [schema])
       }
     } else {
-      db = Knex({
-        client: 'better-sqlite3',
-        connection: {
-          filename: path.join(worldDir, '/db.sqlite'),
-        },
-        useNullAsDefault: true,
-      })
+      // Skip database for development environment - will use in-memory storage
+      console.log('[db] Using in-memory storage for development')
+      return null
     }
     await migrate(db)
   }

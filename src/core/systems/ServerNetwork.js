@@ -40,6 +40,14 @@ export class ServerNetwork extends System {
   }
 
   async start() {
+    // Handle development mode without database
+    if (!this.db) {
+      console.log('[network] Starting in development mode (no database)')
+      this.spawn = JSON.parse(defaultSpawn)
+      this.world.settings.setHasAdminCode(!!process.env.ADMIN_CODE)
+      return
+    }
+
     // get spawn
     const spawnRow = await this.db('config').where('key', 'spawn').first()
     this.spawn = JSON.parse(spawnRow?.value || defaultSpawn)
@@ -124,6 +132,16 @@ export class ServerNetwork extends System {
   }
 
   save = async () => {
+    // Skip saving in development mode
+    if (!this.db) {
+      this.dirtyBlueprints.clear()
+      this.dirtyApps.clear()
+      if (SAVE_INTERVAL) {
+        this.saveTimerId = setTimeout(this.save, SAVE_INTERVAL * 1000)
+      }
+      return
+    }
+
     const counts = {
       upsertedBlueprints: 0,
       upsertedApps: 0,
@@ -193,6 +211,7 @@ export class ServerNetwork extends System {
   }
 
   saveSettings = async () => {
+    if (!this.db) return
     const data = this.world.settings.serialize()
     const value = JSON.stringify(data)
     await this.db('config')
