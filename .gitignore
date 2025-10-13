@@ -7,3 +7,9 @@ localstorage.json
 node_modules/
 build/
 /world*
+
+# Development and testing files
+.playwright-mcp/
+.vexify.db
+agent.mjs
+overview.png
